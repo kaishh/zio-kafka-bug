@@ -11,10 +11,7 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
   val startedCounter = new LongAdder
   val completedCounter = new LongAdder
   val awakeCounter = new LongAdder
-  val interruptedCounter = new LongAdder
-  val interruptedWCounter = new LongAdder
   val pendingGauge = new LongAdder
-  val timeoutCounter = new LongAdder
 
   def run(args: List[String]): ZIO[Environment, Nothing, Int] = {
     val leakOrDeadlockTest = for {
@@ -31,7 +28,6 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
           awakeCounter.increment()
           pendingGauge.decrement()
         })
-        .onInterrupt(UIO(interruptedWCounter.increment()))
 
       _ <- UIO(completedCounter.increment())
     } yield ()
@@ -42,7 +38,7 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
           .flatMap {
             metrics => UIO(new Thread(() => {
               while (true) {
-                println(s"started=${startedCounter.longValue()} awake=${awakeCounter.longValue()} completed=${completedCounter.longValue()} pending=${pendingGauge.longValue()} timed-out=${timeoutCounter.longValue()} finishedInterrupts=${interruptedCounter.longValue()} interruptedWaiters=${interruptedWCounter.longValue()} queued=${metrics.size}")
+                println(s"started=${startedCounter.longValue()} awake=${awakeCounter.longValue()} completed=${completedCounter.longValue()} pending=${pendingGauge.longValue()} queued=${metrics.size}")
                 Thread.sleep(1000L)
               }
             }).start())
