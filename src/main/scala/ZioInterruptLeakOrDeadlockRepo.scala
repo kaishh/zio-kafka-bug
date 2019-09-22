@@ -15,6 +15,7 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
   val completedCounter = new LongAdder
   val awakeCounter = new LongAdder
   val interruptedCounter = new LongAdder
+  val interruptedWCounter = new LongAdder
   val pendingGauge = new LongAdder
   val timeoutCounter = new LongAdder
 
@@ -54,7 +55,7 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
 
         (fiber.await *> UIO(interrupted.set(true))).fork.flatMap {
           waiterFiber =>
-//            UIO(monitorThread(new WeakReference(waiterFiber)).start())
+            //            UIO(monitorThread(new WeakReference(waiterFiber)).start())
             UIO.unit
         } *> fiber.await.ignore
     }
@@ -75,7 +76,7 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
           awakeCounter.increment()
           pendingGauge.decrement()
         })
-        .onInterrupt(UIO(interruptedCounter.increment()))
+        .onInterrupt(UIO(interruptedWCounter.increment()))
 
       _ <- UIO(completedCounter.increment())
     } yield ()
@@ -84,7 +85,7 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
       _ <-
         ZIO.runtime[Any].map(_.Platform.executor.metrics.get).flatMap {
           metrics =>
-            UIO(s"started=${startedCounter.longValue()} awake=${awakeCounter.longValue()} completed=${completedCounter.longValue()} pending=${pendingGauge.longValue()} timed-out=${timeoutCounter.longValue()} interrupted=${interruptedCounter.longValue()} queued=${metrics.size}")
+            UIO(s"started=${startedCounter.longValue()} awake=${awakeCounter.longValue()} completed=${completedCounter.longValue()} pending=${pendingGauge.longValue()} timed-out=${timeoutCounter.longValue()} finishedInterrupts=${interruptedCounter.longValue()} interruptedWaiters=${interruptedWCounter.longValue()} queued=${metrics.size}")
               .flatMap(putStrLn)
               .repeat(ZSchedule.fixed(1.second))
         }.fork
@@ -92,11 +93,13 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
       _ <- ZIO.foreachParN_(8)(1 to 8) {
         _ =>
           leakOrDeadlockTest
-            .fork.flatMap(_.join).timeout(10.seconds)
-            .repeat(ZSchedule.identity[Option[Unit]].logInput {
-              case Some(_) => UIO.unit
-              case None => UIO(timeoutCounter.increment())
-            })
+            .fork.flatMap(_.join) //.timeout(10.seconds)
+            .repeat(ZSchedule.identity
+              //              .logInput {
+              //                case Some(_) => UIO.unit
+              //                case None => UIO(timeoutCounter.increment())
+              //              }
+            )
       }
     } yield 0
 
