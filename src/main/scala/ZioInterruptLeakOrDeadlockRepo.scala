@@ -1,9 +1,6 @@
-import java.lang.ref.WeakReference
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong, LongAdder}
+import java.util.concurrent.atomic.{AtomicLong, LongAdder}
 
-import zio._
-import zio.console._
-import zio.duration._
+import zio.{UIO, _}
 
 import scala.language.reflectiveCalls
 
@@ -19,48 +16,6 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
   val pendingGauge = new LongAdder
   val timeoutCounter = new LongAdder
 
-  def monitoredInterrupt(f: Fiber[_, _]): UIO[_] = {
-    f.interrupt
-      .ensuring(UIO(interruptedCounter.increment()))
-      .fork.flatMap {
-      fiber =>
-        val fweakRef = new WeakReference(f)
-        val weakRef = new WeakReference(fiber)
-        val interrupted = new AtomicBoolean(false)
-
-        def monitorThread(w: WeakReference[Fiber[_, _]]) = {
-          new Thread(() => {
-            var i = 0
-            while (!interrupted.get()) {
-              if ((weakRef.get() eq null) && !interrupted.get()) {
-                System.err.println(
-                  s"LEAKED N=${leakedCounter.incrementAndGet()}, WAITER WILL NEVER WAKE UP originalGcd=${
-                    fweakRef
-                      .get() eq null
-                  } waiterGCd=${w.get() eq null} originalInterrupted=${
-                    Option(fweakRef.get())
-                      .map(_.asInstanceOf[ {var interrupted: Boolean}].interrupted)
-                  }"
-                )
-                throw new Throwable("watcher thread died")
-              }
-              Thread.sleep(1000L)
-              i += 1
-            }
-            //          println(s"monitor finished in $i attempts")
-          }) {
-            override def getUncaughtExceptionHandler = (_, _) => ()
-          }
-        }
-
-        (fiber.await *> UIO(interrupted.set(true))).fork.flatMap {
-          waiterFiber =>
-            //            UIO(monitorThread(new WeakReference(waiterFiber)).start())
-            UIO.unit
-        } *> fiber.await.ignore
-    }
-  }
-
   def run(args: List[String]): ZIO[Environment, Nothing, Int] = {
     val leakOrDeadlockTest = for {
       _ <- UIO {
@@ -68,10 +23,10 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
         pendingGauge.increment()
       }
 
-      sleepInterruptFiber <- clock.sleep(1.minute).fork
+      sleepInterruptFiber <- IO.never.fork
 
       // This blocks / leaks once every 20,000 rounds or so
-      _ <- monitoredInterrupt(sleepInterruptFiber)
+      _ <- sleepInterruptFiber.interrupt
         .ensuring(UIO {
           awakeCounter.increment()
           pendingGauge.decrement()
@@ -83,24 +38,17 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
 
     val main = for {
       _ <-
-        ZIO.runtime[Any].map(_.Platform.executor.metrics.get).flatMap {
-          metrics =>
-            UIO(s"started=${startedCounter.longValue()} awake=${awakeCounter.longValue()} completed=${completedCounter.longValue()} pending=${pendingGauge.longValue()} timed-out=${timeoutCounter.longValue()} finishedInterrupts=${interruptedCounter.longValue()} interruptedWaiters=${interruptedWCounter.longValue()} queued=${metrics.size}")
-              .flatMap(putStrLn)
-              .repeat(ZSchedule.fixed(1.second))
-        }.fork
+        ZIO.runtime[Any].map(_.Platform.executor.metrics.get)
+          .flatMap {
+            metrics => UIO(new Thread(() => {
+              while (true) {
+                println(s"started=${startedCounter.longValue()} awake=${awakeCounter.longValue()} completed=${completedCounter.longValue()} pending=${pendingGauge.longValue()} timed-out=${timeoutCounter.longValue()} finishedInterrupts=${interruptedCounter.longValue()} interruptedWaiters=${interruptedWCounter.longValue()} queued=${metrics.size}")
+                Thread.sleep(1000L)
+              }
+            }).start())
+          }
 
-      _ <- ZIO.foreachParN_(8)(1 to 8) {
-        _ =>
-          leakOrDeadlockTest
-            .fork.flatMap(_.join) //.timeout(10.seconds)
-            .repeat(ZSchedule.identity
-              //              .logInput {
-              //                case Some(_) => UIO.unit
-              //                case None => UIO(timeoutCounter.increment())
-              //              }
-            )
-      }
+      _ <- leakOrDeadlockTest.forever
     } yield 0
 
     main
