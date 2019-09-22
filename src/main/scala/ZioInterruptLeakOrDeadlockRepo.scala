@@ -1,15 +1,15 @@
 import java.lang.ref.WeakReference
-import java.util.concurrent.atomic.{AtomicBoolean, LongAdder}
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong, LongAdder}
 
-import cats.syntax.flatMap
 import zio._
 import zio.console._
 import zio.duration._
-import zio.interop.M
 
 import scala.language.reflectiveCalls
 
 object ZioInterruptLeakOrDeadlockRepo extends zio.App {
+
+  val leakedCounter = new AtomicLong(0L)
 
   val startedCounter = new LongAdder
   val completedCounter = new LongAdder
@@ -33,7 +33,7 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
             while (!interrupted.get()) {
               if ((weakRef.get() eq null) && !interrupted.get()) {
                 System.err.println(
-                  s"LEAKED N=${M.count.incrementAndGet()}, WAITER WILL NEVER WAKE UP originalGcd=${
+                  s"LEAKED N=${leakedCounter.incrementAndGet()}, WAITER WILL NEVER WAKE UP originalGcd=${
                     fweakRef
                       .get() eq null
                   } waiterGCd=${w.get() eq null} originalInterrupted=${
