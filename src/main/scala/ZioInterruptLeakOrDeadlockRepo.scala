@@ -1,10 +1,8 @@
-import java.util.concurrent.atomic.{AtomicLong, LongAdder}
+import java.util.concurrent.atomic.LongAdder
 
 import zio.{UIO, _}
 
 object ZioInterruptLeakOrDeadlockRepo extends zio.App {
-
-  val leakedCounter = new AtomicLong(0L)
 
   val startedCounter = new LongAdder
   val completedCounter = new LongAdder
