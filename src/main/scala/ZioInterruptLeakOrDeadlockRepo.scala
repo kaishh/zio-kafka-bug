@@ -2,8 +2,6 @@ import java.util.concurrent.atomic.{AtomicLong, LongAdder}
 
 import zio.{UIO, _}
 
-import scala.language.reflectiveCalls
-
 object ZioInterruptLeakOrDeadlockRepo extends zio.App {
 
   val leakedCounter = new AtomicLong(0L)
