@@ -11,7 +11,7 @@ object StreamZio extends App {
     .withBootstrapServers("http://localhost:9092")
     .withParallelism(1000)
 
-  override def run(args: List[String]): ZIO[Environment, Nothing, Int] = ZIO.runtime.flatMap { implicit rt: Runtime[Environment] =>
+  override def run(args: List[String]): ZIO[Any, Nothing, Int] = ZIO.runtime.flatMap { implicit rt: Runtime[Any] =>
     val string = UUID.randomUUID().toString
     val zioRecord = ProducerRecords.one(ProducerRecord("notifications-zio-" + string, "", "some zio data"))
 

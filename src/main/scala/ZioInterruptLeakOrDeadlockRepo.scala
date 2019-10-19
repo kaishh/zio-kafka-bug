@@ -1,6 +1,6 @@
 import java.util.concurrent.atomic.LongAdder
 
-import zio.{UIO, _}
+import zio.{UIO, ZEnv, _}
 
 object ZioInterruptLeakOrDeadlockRepo extends zio.App {
 
@@ -9,7 +9,7 @@ object ZioInterruptLeakOrDeadlockRepo extends zio.App {
   val awakeCounter = new LongAdder
   val pendingGauge = new LongAdder
 
-  def run(args: List[String]): ZIO[Environment, Nothing, Int] = {
+  def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
     val leakOrDeadlockTest = for {
       _ <- UIO {
         startedCounter.increment()

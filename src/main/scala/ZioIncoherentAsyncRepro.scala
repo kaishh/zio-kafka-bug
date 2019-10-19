@@ -1,15 +1,14 @@
 import zio._
-import zio.console.Console
+import zio.duration._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import zio.duration._
 
 object ZioIncoherentAsyncRepro extends zio.App {
 
-  def run(args: List[String]): ZIO[Environment, Nothing, Int] = {
+  def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
     val test =
-      ZIO.effectAsyncMaybe[Environment, Nothing, Unit] {
+      ZIO.effectAsyncMaybe[ZEnv, Nothing, Unit] {
         k =>
           Future {
             Thread.sleep(200L)
@@ -17,7 +16,12 @@ object ZioIncoherentAsyncRepro extends zio.App {
           }
           Some(IO.unit)
       }
-        .flatMap(_ => ZIO.sleep(500.millis))
+        .flatMap {
+          _ =>
+            ZIO.sleep(500.millis) *>
+              console.putStrLn("SUCCESS") *>
+              ZIO.never
+        }
         .ensuring(console.putStrLn("CAN'T HAPPEN!"))
         .uninterruptible
 
